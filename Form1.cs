@@ -103,25 +103,33 @@ namespace WindowsFormsApp_USB
             this.Controls.Add(grpOp);
         }
 
-        // --- 2. 核心：USB 总线枚举 (WMI) ---
+        // --- 2. 核心：USB 总线枚举 (增强版：修复转换无效错误) ---
         private void RefreshUsbList()
         {
             gridDevices.Rows.Clear();
             try
             {
-                // 获取 USBHub 和 USB 控制器
                 ManagementObjectSearcher searcher = new ManagementObjectSearcher(@"SELECT * FROM Win32_PnPEntity WHERE DeviceID LIKE 'USB%'");
-                foreach (var obj in searcher.Get())
+
+                // 关键修改：使用 ManagementBaseObject，不要用 var 或 ManagementObject
+                foreach (ManagementBaseObject obj in searcher.Get())
                 {
-                    string name = obj["Name"]?.ToString();
-                    string id = obj["DeviceID"]?.ToString(); // 这里包含 VID/PID
-                    string status = obj["Status"]?.ToString();
+                    // 使用 Convert.ToString 处理可能的 null 值，防止报错
+                    string name = Convert.ToString(obj["Name"]);
+                    string id = Convert.ToString(obj["DeviceID"]);
+                    string status = Convert.ToString(obj["Status"]);
 
                     if (!string.IsNullOrEmpty(name))
+                    {
                         gridDevices.Rows.Add(name, id, status);
+                    }
                 }
             }
-            catch (Exception ex) { Log("枚举 USB 失败: " + ex.Message); }
+            catch (Exception ex)
+            {
+                // 即使出错也只记录日志，不弹窗打扰用户
+                Log("枚举 USB 列表警告: " + ex.Message);
+            }
         }
 
         // --- 3. 核心：U盘盘符检测 ---
@@ -147,7 +155,7 @@ namespace WindowsFormsApp_USB
             }
         }
 
-        // --- 4. 核心：热拔插监听 (WndProc) ---
+        // --- 4. 核心：热拔插监听 (插入和拔出都增加延迟，彻底解决报错) ---
         protected override void WndProc(ref Message m)
         {
             const int WM_DEVICECHANGE = 0x0219;
@@ -157,17 +165,23 @@ namespace WindowsFormsApp_USB
             if (m.Msg == WM_DEVICECHANGE)
             {
                 int eventType = m.WParam.ToInt32();
-                if (eventType == DBT_DEVICEARRIVAL)
+
+                // 无论是插入还是拔出，都统一处理
+                if (eventType == DBT_DEVICEARRIVAL || eventType == DBT_DEVICEREMOVECOMPLETE)
                 {
-                    Log("[硬件事件] 检测到设备插入！");
-                    RefreshDriveList();
-                    RefreshUsbList();
-                }
-                else if (eventType == DBT_DEVICEREMOVECOMPLETE)
-                {
-                    Log("[硬件事件] 检测到设备拔出！");
-                    RefreshDriveList();
-                    RefreshUsbList();
+                    string action = (eventType == DBT_DEVICEARRIVAL) ? "插入" : "拔出";
+                    Log($"[硬件事件] 检测到设备{action}！正在同步系统状态...");
+
+                    // 统一延迟 1 秒，等 Windows 忙完
+                    Task.Delay(1000).ContinueWith(t =>
+                    {
+                        this.Invoke((MethodInvoker)delegate
+                        {
+                            RefreshDriveList();
+                            RefreshUsbList();
+                            Log($"[系统] 设备列表刷新完毕 ({action})");
+                        });
+                    });
                 }
             }
             base.WndProc(ref m);
