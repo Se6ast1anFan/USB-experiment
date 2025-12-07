@@ -1,0 +1,21 @@
+# --- Visual Studio 核心编译文件夹 (必须忽略) ---
+[Bb]in/
+[Oo]bj/
+
+# --- Visual Studio 用户特定配置 (必须忽略) ---
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# --- 调试文件 ---
+*.pdb
+*.cache
+
+# --- Windows 操作系统生成的文件 ---
+Thumbs.db
+Desktop.ini
+
+# --- 如果你将来使用了 NuGet 包，通常也忽略 packages 文件夹 ---
+# packages/
